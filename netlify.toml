@@ -1,0 +1,9 @@
+# Netlify: veröffentlicht den Ordner anhaenger-werkstatt, ohne Build-Schritt
+[build]
+  publish = "anhaenger-werkstatt"
+
+# Die Startadresse „/“ zeigt direkt die App
+[[redirects]]
+  from = "/"
+  to = "/anhaenger-werkstatt.html"
+  status = 200

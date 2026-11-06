@@ -1,0 +1,7 @@
+# Lokale Werkzeuge und temporäre Dateien
+.claude/
+*.tmp
+*.stl
+*.3mf
+Thumbs.db
+desktop.ini
