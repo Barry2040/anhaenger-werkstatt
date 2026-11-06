@@ -400,7 +400,7 @@ function addSvgElement(text, name) {
   const r = importSvg(text, name); if (!r) return;
   const el = {
     id: nid(), type: 'svg', name: (name || 'Logo').replace(/\.svg$/i, ''), regions: r.regions, aw: r.aw, ah: r.ah, edge: r.edge, map: autoMap(r.colors, r.bg, r.edge),
-    x: 0, y: 0, size: 20, rot: 0, mirror: false, mode: 'inlay', grow: 0, outline: { on: false, w: 1, slot: 1 }
+    x: 0, y: 0, size: 20, rot: 0, mirror: false, mode: 'inlay', raise: 1, depth: 1, floorColor: true, grow: 0, outline: { on: false, w: 1, slot: 1 }
   };
   fitSvg(el);
   state.elements.push(el); state.selected = el.id; openSecs.add('els'); render(); schedule();
@@ -409,7 +409,7 @@ function addSvgElement(text, name) {
 }
 function addTextElement(text = 'TEXT') {
   const el = { id: nid(), type: 'text', name: 'Text', text, font: 'Lilita One', spacing: 0, x: 0, y: 0, size: 10, rot: 0, mirror: false,
-    mode: 'inlay', grow: 0, slot: state.slots.length > 1 ? 1 : 0, outline: { on: false, w: 0.8, slot: 0 } };
+    mode: 'inlay', raise: 1, depth: 1, floorColor: true, grow: 0, slot: state.slots.length > 1 ? 1 : 0, outline: { on: false, w: 0.8, slot: 0 } };
   state.elements.push(el); state.selected = el.id; render(); schedule();
 }
 
@@ -596,16 +596,24 @@ function compute() {
   let O = baseOutline(els.map(e => e.w));
   const hg = holeGeom(O); O = hg.O; const H = hg.H;
   const B = D(O, H);
+  const FL = 0.6; // Dicke des farbigen Bodens in einer Vertiefung
   const raisedItems = [], inlayItems = [];
   els.forEach(({ el, w }, i) => {
     if (!w) return;
-    const target = el.mode === 'raised' ? raisedItems : inlayItems;
-    if (w.ring.length) target.push({ paths: w.ring, slot: el.outline.slot, prio: 2 * i, el });
-    for (const r of w.body) target.push({ paths: r.paths, slot: el.mode === 'engraved' ? null : r.slot, prio: 2 * i + 1, el });
+    const raisedM = el.mode === 'raised', target = raisedM ? raisedItems : inlayItems;
+    const h = Math.max(0.2, el.raise ?? hR), label = el.type === 'text' ? el.text.split('\n')[0] : el.name;
+    let kind = raisedM ? 'raised' : 'inlay', rd = 0;
+    if (el.mode === 'recessed') {
+      const floor = el.floorColor !== false, maxD = T - (floor ? FL : 0) - 0.6;
+      rd = Math.max(0.2, Math.min(el.depth ?? 1, maxD)); kind = floor ? 'rec' : 'recPlain';
+      if ((el.depth ?? 1) > maxD + 1e-6) warn.push(`„${label}“: Vertiefung auf ${rd.toFixed(1).replace('.', ',')} mm begrenzt, sonst wird der Boden zu dünn. Für mehr Tiefe die Grundplatte dicker machen.`);
+    }
+    if (w.ring.length) target.push({ paths: w.ring, slot: el.outline.slot, prio: 2 * i, kind: raisedM ? 'raised' : 'inlay', h });
+    for (const r of w.body) target.push({ paths: r.paths, slot: kind === 'recPlain' ? null : r.slot, prio: 2 * i + 1, kind, rd, h });
     const inB = area(I(w.foot, B)), full = area(w.foot);
     if (full > 0 && inB < full * 0.985 && b.shape !== 'contour') warn.push(`„${el.type === 'text' ? el.text.split('\n')[0] : el.name}“ ragt über den Rand oder ins Loch und wird abgeschnitten.`);
   });
-  if (state.rim.on && state.rim.w > 0) raisedItems.push({ paths: D(B, OFF(B, -state.rim.w)), slot: state.rim.slot, prio: -1, rim: true });
+  if (state.rim.on && state.rim.w > 0) raisedItems.push({ paths: D(B, OFF(B, -state.rim.w)), slot: state.rim.slot, prio: -1, rim: true, kind: 'raised', h: hR });
   const resolve = (items, clipTo) => {
     const out = []; let cov = [];
     [...items].sort((a, b) => b.prio - a.prio).forEach(it => {
@@ -615,20 +623,29 @@ function compute() {
     return out;
   };
   const inlay = resolve(inlayItems, B);
-  let cut = []; inlay.forEach(it => { cut = U(cut, it.paths); });
-  let engr = []; inlay.filter(it => it.slot === null).forEach(it => { engr = U(engr, it.paths); });
-  const raised = resolve(raisedItems, D(B, engr));
+  // Jede Fläche schneidet die Grundplatte ab einer bestimmten Höhe zb nach oben aus
+  const r4 = z => Math.round(z * 1e4) / 1e4;
+  const cuts = inlay.map(it => ({ paths: it.paths, zb: r4(it.kind === 'inlay' ? T - d : it.kind === 'rec' ? T - it.rd - FL : T - it.rd) }));
+  let rec = []; inlay.filter(it => it.kind !== 'inlay').forEach(it => { rec = U(rec, it.paths); });
+  const raised = resolve(raisedItems, D(B, rec));
   const pieces = new Map();
   const add = (slot, paths, z0, z1, layer) => {
-    if (!paths.length || slot === null || slot < 0) return;
+    z0 = r4(z0); z1 = r4(z1);
+    if (!paths.length || slot === null || slot < 0 || z1 - z0 < 1e-3) return;
     const k = `${slot}|${z0}|${z1}`; const p = pieces.get(k);
     pieces.set(k, { slot, z0, z1, layer, paths: U(p ? p.paths : [], paths) });
   };
   const bs = Math.min(b.slot, state.slots.length - 1);
-  if (cut.length) { add(bs, B, 0, T - d, 'base'); add(bs, D(B, cut), T - d, T, 'base'); }
-  else add(bs, B, 0, T, 'base');
-  inlay.forEach(it => add(it.slot, it.paths, T - d, T, 'inlay'));
-  raised.forEach(it => add(it.slot, it.paths, T, T + hR, 'raised'));
+  const levels = [...new Set([0, ...cuts.map(c => c.zb), r4(T)])].sort((a, b) => a - b);
+  for (let k = 0; k < levels.length - 1; k++) {
+    let cut = []; cuts.forEach(c => { if (c.zb <= levels[k] + 1e-6) cut = U(cut, c.paths); });
+    add(bs, D(B, cut), levels[k], levels[k + 1], 'base');
+  }
+  inlay.forEach(it => {
+    if (it.kind === 'inlay') add(it.slot, it.paths, T - d, T, 'inlay');
+    else if (it.kind === 'rec') add(it.slot, it.paths, T - it.rd - FL, T - it.rd, 'inlay');
+  });
+  raised.forEach(it => add(it.slot, it.paths, T, T + it.h, 'raised'));
   // Druckbarkeit: feine Details
   for (const p of pieces.values()) {
     if (p.layer === 'base') continue;
@@ -637,7 +654,10 @@ function compute() {
     if (lost > 0.4 && lost / a > 0.06) warn.push(`Farbe ${p.slot + 1} hat Details unter ca. 0,4 mm – die druckt eine 0,4-mm-Düse nicht sauber. „Verstärkung“ erhöhen oder größer skalieren.`);
   }
   const ob = bbox(O);
-  return { pieces: [...pieces.values()], T, d, hR, ob, raisedAny: raised.length > 0, cutAny: cut.length > 0, warn: [...new Set(warn)], loading, foots: els.map(e => ({ id: e.el.id, foot: e.w ? e.w.foot : [] })) };
+  const all = [...pieces.values()];
+  const top = Math.max(T, ...all.map(p => p.z1));
+  const zs = [...new Set(all.filter(p => p.layer !== 'base').map(p => p.z0))].sort((a, b) => a - b);
+  return { pieces: all, T, top, zs, ob, warn: [...new Set(warn)], loading, foots: els.map(e => ({ id: e.el.id, foot: e.w ? e.w.foot : [] })) };
 }
 
 /* ================= Meshes ================= */
@@ -721,7 +741,7 @@ function buildPreview() {
   drawSelection();
   const ob = model.ob;
   if (ob) {
-    const top = model.T + (model.raisedAny ? model.hR : 0);
+    const top = model.top;
     document.getElementById('dims').textContent = `${ob.w.toFixed(1)} × ${ob.h.toFixed(1)} × ${top.toFixed(1)} mm`;
     lastSize = Math.max(ob.w, ob.h);
   }
@@ -731,7 +751,7 @@ function drawSelection() {
   for (const c of [...selGroup.children]) { c.geometry.dispose(); selGroup.remove(c); }
   if (!model) return;
   const f = model.foots.find(x => x.id === state.selected); if (!f) return;
-  const z = model.T + (model.raisedAny ? model.hR : 0) + 0.05;
+  const z = model.top + 0.05;
   const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar('--accent') || '#dd5a12') });
   for (const p of f.foot) {
     const g = new THREE.BufferGeometry().setFromPoints(p.map(q => new THREE.Vector3(q.X / S, q.Y / S, z)));
@@ -881,7 +901,7 @@ function readme(vols) {
   const m = model;
   return `Schlüsselanhänger "${state.name}" – erstellt mit der Anhänger-Werkstatt
 
-Maße: ${m.ob.w.toFixed(1)} x ${m.ob.h.toFixed(1)} x ${(m.T + (m.raisedAny ? m.hR : 0)).toFixed(1)} mm
+Maße: ${m.ob.w.toFixed(1)} x ${m.ob.h.toFixed(1)} x ${m.top.toFixed(1)} mm
 
 Farben / Filament-Slots:
 ${vols.map(v => `  Slot ${v.slot + 1}: ${state.slots[v.slot].name} (${state.slots[v.slot].color})`).join('\n')}
@@ -892,7 +912,7 @@ ${vols.map(v => `  Slot ${v.slot + 1}: ${state.slots[v.slot].name} (${state.slot
    importieren und die Frage "als ein Objekt mit mehreren Teilen laden?" mit Ja beantworten.
    Danach jedem Teil sein Filament zuweisen.
 
-Schichthöhen-Tipp: 0,2 mm Schichten. Die Farbebenen beginnen bei Z = ${m.cutAny ? (m.T - m.d).toFixed(2) + ' mm (eingelegt)' : '-'}${m.raisedAny ? ' und Z = ' + m.T.toFixed(2) + ' mm (erhaben)' : ''}.
+Schichthöhen-Tipp: 0,2 mm Schichten. Farbwechsel beginnen bei Z = ${m.zs.length ? m.zs.map(z => z.toFixed(2).replace('.', ',') + ' mm').join(', ') : '-'}.
 `;
 }
 
@@ -904,7 +924,11 @@ function loadState(obj) {
   state = { ...d, ...obj, base: { ...d.base, ...obj.base }, hole: { ...d.hole, ...obj.hole }, rim: { ...d.rim, ...obj.rim }, layer: { ...d.layer, ...obj.layer } };
   if (!Array.isArray(state.slots) || !state.slots.length) state.slots = d.slots;
   state.elements = (state.elements || []).filter(e => e && (e.type === 'svg' || e.type === 'text'));
-  state.elements.forEach(e => { e.outline = e.outline || { on: false, w: 1, slot: 0 }; e.grow = e.grow || 0; });
+  state.elements.forEach(e => {
+    e.outline = e.outline || { on: false, w: 1, slot: 0 }; e.grow = e.grow || 0;
+    if (e.mode === 'engraved') { e.mode = 'recessed'; e.floorColor = false; e.depth = e.depth ?? state.layer.depth; }
+    e.raise = e.raise ?? state.layer.raise; e.depth = e.depth ?? 1; e.floorColor = e.floorColor ?? true;
+  });
 }
 
 /* ================= Panel ================= */
@@ -946,8 +970,8 @@ function render() {
 
   const rim = `<label class="check"><input type="checkbox" id="rimOn" data-p="rim.on" data-rr="1" ${state.rim.on ? 'checked' : ''}> Erhabener Rand</label>` +
     (state.rim.on ? F('Randbreite', 'rim.w', 0.6, 5, 0.1) + `<div class="row"><span class="lab">Randfarbe</span>${chips('rim.slot', state.rim.slot)}</div>` : '') +
-    F('Relief-Höhe', 'layer.raise', 0.4, 4, 0.1) + F('Einlege-Tiefe', 'layer.depth', 0.2, 2, 0.1) +
-    `<p class="note">„Erhaben“ steht um die Relief-Höhe über der Oberfläche. „Eingelegt“ liegt bündig und ist so tief wie die Einlege-Tiefe – am saubersten mit AMS/MMU. Tipp: Vielfache der Schichthöhe (0,2 mm).</p>`;
+    (state.rim.on ? F('Randhöhe', 'layer.raise', 0.4, 4, 0.1) : '') + F('Einlege-Tiefe', 'layer.depth', 0.2, 2, 0.1) +
+    `<p class="note">Die Einlege-Tiefe gilt für alle bündig eingelegten Elemente. Höhe (erhaben) und Tiefe (vertieft) stellst du pro Logo oder Text ein. Tipp: Vielfache der Schichthöhe (0,2 mm).</p>`;
 
   const els = state.elements.map((e, i) => {
     const cols = e.type === 'svg' ? [...new Set(Object.values(e.map).filter(v => v >= 0))] : [e.slot];
@@ -968,7 +992,12 @@ function render() {
       ed += `<div class="row"><button class="btn small" type="button" data-act="fit">⤢ In Form einpassen</button><button class="btn small" type="button" data-act="recolor">Originalfarben zuordnen</button></div>` +
         F('Größe', 'el.size', 4, 120, 0.5) + `<div class="map"><span class="lab">Farben im Logo → Filament</span>${e.regions.map(r => `<div class="maprow"><span class="orig" style="--c:${r.color}" title="${r.color}"></span><span class="arrow">→</span>${chips(r.color, e.map[r.color] ?? -1, true, 'data-map')}</div>`).join('')}</div>`;
     }
-    ed += seg('el.mode', [['inlay', 'Eingelegt'], ['raised', 'Erhaben'], ['engraved', 'Graviert']], 'Art');
+    ed += seg('el.mode', [['inlay', 'Bündig'], ['raised', 'Erhaben'], ['recessed', 'Vertieft']], 'Art');
+    if (e.mode === 'raised') ed += F('Höhe', 'el.raise', 0.2, 5, 0.1) + `<p class="note">Steht so weit über der Oberfläche hervor.</p>`;
+    else if (e.mode === 'recessed') ed += F('Tiefe', 'el.depth', 0.2, 5, 0.1) +
+      `<label class="check"><input type="checkbox" id="efloor" data-p="el.floorColor" data-rr="1"${e.floorColor !== false ? 'checked' : ''}> Boden in Logo-Farbe</label>
+      <p class="note">${e.floorColor !== false ? 'Ins Material eingesenkt, der Boden der Vertiefung wird in der Logo-Farbe gedruckt.' : 'Nur ausgeschnitten (graviert), in der Grundfarbe – braucht kein zweites Filament.'}</p>`;
+    else ed += `<p class="note">Liegt eben in der Oberfläche, so tief wie die Einlege-Tiefe unter „Rand & Ebenen“. Am saubersten mit AMS/MMU.</p>`;
     ed += F('Position X', 'el.x', -60, 60, 0.5) + F('Position Y', 'el.y', -60, 60, 0.5) + F('Drehung', 'el.rot', -180, 180, 1, '°') +
       F('Verstärkung', 'el.grow', -0.3, 1.5, 0.05) +
       `<label class="check"><input type="checkbox" id="emir" data-p="el.mirror" ${e.mirror ? 'checked' : ''}> Spiegeln</label>
@@ -996,16 +1025,13 @@ function render() {
 function renderInfo() {
   const box = document.getElementById('info'); if (!box || !model) return;
   const used = [...usedSlots()].sort((a, b) => a - b);
-  const top = model.T + (model.raisedAny ? model.hR : 0);
+  const top = model.top, colored = model.pieces.filter(p => p.layer !== 'base');
   let h = `<dl class="kv"><dt>Maße</dt><dd>${model.ob ? `${model.ob.w.toFixed(1)} × ${model.ob.h.toFixed(1)} × ${top.toFixed(1)} mm` : '–'}</dd>
   <dt>Farben</dt><dd>${used.map(i => `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${state.slots[i].color};border:1px solid var(--line);vertical-align:-1px"></span> ${i + 1}`).join('  ') || '–'}</dd>
-  ${model.cutAny ? `<dt>Farbebene</dt><dd>ab Z ${(model.T - model.d).toFixed(2)} mm (eingelegt)</dd>` : ''}
-  ${model.raisedAny ? `<dt>Relief</dt><dd>ab Z ${model.T.toFixed(2)} mm (erhaben)</dd>` : ''}</dl>`;
+  ${model.zs.length ? `<dt>Farbwechsel</dt><dd>ab Z ${model.zs.map(z => z.toFixed(2)).join(' · ')} mm</dd>` : ''}</dl>`;
   if (used.length > 4) h += `<p class="warn">${used.length} Farben genutzt. Ein einzelnes AMS hat 4 Plätze.</p>`;
-  if (!model.cutAny && model.raisedAny) {
-    const rs = new Set(model.pieces.filter(p => p.layer === 'raised').map(p => p.slot));
-    if (rs.size === 1) h += `<p class="note">Geht auch ohne AMS: Filamentwechsel (Pause) bei Z = ${model.T.toFixed(2)} mm einfügen.</p>`;
-  }
+  if (colored.length && colored.every(p => p.layer === 'raised' && Math.abs(p.z0 - model.T) < 1e-3) && new Set(colored.map(p => p.slot)).size === 1)
+    h += `<p class="note">Geht auch ohne AMS: Filamentwechsel (Pause) bei Z = ${model.T.toFixed(2)} mm einfügen.</p>`;
   model.warn.forEach(w => { h += `<p class="warn">${esc(w)}</p>`; });
   if (model.loading) h += `<p class="note">Schrift wird geladen …</p>`;
   box.innerHTML = h;
@@ -1115,8 +1141,8 @@ let restored = false;
 try { const s = localStorage.getItem(LS); if (s) { loadState(JSON.parse(s)); restored = true; } } catch {}
 if (!restored) {
   const r = importSvg(SAMPLE_SVG, 'Berg');
-  if (r) state.elements.push({ id: nid(), type: 'svg', name: 'Beispiel-Logo Berg', regions: r.regions, aw: r.aw, ah: r.ah, edge: r.edge, map: autoMap(r.colors, r.bg, r.edge), x: -17, y: 0, size: 23, rot: 0, mirror: false, mode: 'inlay', grow: 0, outline: { on: false, w: 1, slot: 1 } });
-  state.elements.push({ id: nid(), type: 'text', name: 'Text', text: 'ALPEN', font: 'Lilita One', spacing: 0.02, x: 12, y: -0.5, size: 12, rot: 0, mirror: false, mode: 'inlay', grow: 0, slot: 1, outline: { on: false, w: 0.8, slot: 0 } });
+  if (r) state.elements.push({ id: nid(), type: 'svg', name: 'Beispiel-Logo Berg', regions: r.regions, aw: r.aw, ah: r.ah, edge: r.edge, map: autoMap(r.colors, r.bg, r.edge), x: -17, y: 0, size: 23, rot: 0, mirror: false, mode: 'inlay', raise: 1, depth: 1, floorColor: true, grow: 0, outline: { on: false, w: 1, slot: 1 } });
+  state.elements.push({ id: nid(), type: 'text', name: 'Text', text: 'ALPEN', font: 'Lilita One', spacing: 0.02, x: 12, y: -0.5, size: 12, rot: 0, mirror: false, mode: 'inlay', raise: 1, depth: 1, floorColor: true, grow: 0, slot: 1, outline: { on: false, w: 0.8, slot: 0 } });
   state.selected = state.elements[1]?.id || null;
 }
 render(); buildPreview(); setView('3d');

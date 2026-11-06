@@ -34,7 +34,7 @@
 | 🧽 **Hintergrund weg** | Ein Hintergrund, der das ganze Logo-Rechteck füllt, wird erkannt und weggelassen |
 | 👁️ **Kontrast-Schutz** | Würde eine Logo-Farbe am Rand in der Grundfarbe verschwinden (schwarzes Logo auf schwarzem Anhänger), bekommt sie automatisch die kontrastreichste Farbe |
 | 🔤 **Text** | 12 Schriften (Google Fonts) oder eigene Schriftdatei (TTF/OTF/WOFF), mehrzeilig, Zeichenabstand |
-| 🧱 **Drei Arten** | **Eingelegt** (bündig, am saubersten mit AMS/MMU), **Erhaben** (steht hervor) oder **Graviert** (eingeschnitten) – pro Element |
+| 🧱 **Bündig, erhaben, vertieft** | Pro Logo/Text: **Bündig** eingelegt (am saubersten mit AMS/MMU), **Erhaben** mit eigener Höhe oder **Vertieft** mit eigener Tiefe – wahlweise mit Boden in Logo-Farbe oder nur ausgeschnitten (graviert, einfarbig) |
 | 🔷 **Grundformen** | Rechteck abgerundet, Pille, Kreis, Oval, Sechseck, Wappen, Herz oder **Kontur um das Motiv** (mit Abstand, Löcher füllen) |
 | 🔑 **Öse** | Lasche links/oben/rechts/Ecke oder Loch innen – Durchmesser, Wandstärke und Versatz einstellbar, Übergang wird verrundet |
 | 🖍️ **Rand & Kontur** | Erhabener Rand um den Anhänger und eine Kontur in eigener Farbe um jedes Logo oder jeden Text |
