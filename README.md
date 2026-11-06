@@ -33,6 +33,12 @@
 | 🎨 **Automatisch anmalen** | Jede Logo-Farbe bekommt einen Filament-Slot: passende Slots werden wiederverwendet, sonst entsteht ein neuer in genau dieser Farbe. Ähnliche Töne (Verläufe, Kantenglättung) werden auf höchstens 8 Farben zusammengefasst |
 | 🧽 **Hintergrund weg** | Ein Hintergrund, der das ganze Logo-Rechteck füllt, wird erkannt und weggelassen |
 | 👁️ **Kontrast-Schutz** | Würde eine Logo-Farbe am Rand in der Grundfarbe verschwinden (schwarzes Logo auf schwarzem Anhänger), bekommt sie automatisch die kontrastreichste Farbe |
+| ⭐ **Symbole** | 12 eingebaute Motive zum Anklicken: Herz, Stern, Pfote, Haus, Blitz, Note, Krone, Smiley, Klee, Sonne, Mond, Berg – werden wie ein SVG eingepasst und eingefärbt |
+| 🔳 **QR-Code** | Link, Telefonnummer oder Instagram als QR-Code, Punkte und Hintergrund in eigenen Farben; warnt, wenn die Punkte für eine sichere Lesbarkeit zu klein werden |
+| 🔄 **Rückseite** | Text, Logo oder QR-Code bündig in die Unterseite einlegen (z. B. Name oder Telefonnummer) – automatisch gespiegelt, damit es von hinten richtig lesbar ist |
+| 👪 **Namens-Serie** | Eine Liste Namen eintragen und mit einem Klick für jeden Namen eine eigene 3MF bekommen – für Geschenke, Vereine oder Schulklassen |
+| 🎬 **Vorschau** | Anhänger langsam drehen lassen und die Ansicht als PNG speichern |
+| ↶ **Rückgängig** | Rückgängig und Wiederholen mit Knopf oder Strg+Z / Strg+Y |
 | 🔤 **Text** | 12 Schriften (Google Fonts) oder eigene Schriftdatei (TTF/OTF/WOFF), mehrzeilig, Zeichenabstand |
 | 🧱 **Bündig, erhaben, vertieft** | Pro Logo/Text: **Bündig** eingelegt (am saubersten mit AMS/MMU), **Erhaben** mit eigener Höhe oder **Vertieft** mit eigener Tiefe – wahlweise mit Boden in Logo-Farbe oder nur ausgeschnitten (graviert, einfarbig) |
 | 🔷 **Grundformen** | Rechteck abgerundet, Pille, Kreis, Oval, Sechseck, Wappen, Herz oder **Kontur um das Motiv** (mit Abstand, Löcher füllen) |
@@ -75,7 +81,7 @@
 | `docs/` | Banner und Screenshot für diese Seite |
 
 Benutzte Bibliotheken (per CDN geladen): [three.js](https://threejs.org) für 3D-Vorschau, SVG-Import und Extrusion,
-[Clipper](https://www.npmjs.com/package/clipper-lib) für die 2D-Flächen-Operationen und
+[Clipper](https://www.npmjs.com/package/clipper-lib) für die 2D-Flächen-Operationen, [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) für QR-Codes und
 [fflate](https://github.com/101arrowz/fflate) für 3MF/ZIP. Lokal starten: Datei im Browser öffnen
 (Internet für CDN und Schriften nötig) oder z. B. `python -m http.server -d anhaenger-werkstatt`.
 
